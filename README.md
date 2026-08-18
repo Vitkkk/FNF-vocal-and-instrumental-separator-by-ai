@@ -23,3 +23,39 @@ sem depender da hipótese de que `mix - instrumental = vocals`, porque renders, 
 O primeiro caso documentado é **Maniac (His Apocalypse Mix)**. Os detalhes e medições ficam em `ground_truth/maniac_his_apocalypse_mix/README.md`.
 
 > Os arquivos de áudio usados como referência não são redistribuídos neste repositório. Apenas metadados, medições e scripts de preparação devem ser versionados.
+
+## Preparação do dataset
+
+Requisitos:
+
+- Python 3.10+;
+- `ffmpeg` disponível no `PATH`;
+- dependências de `requirements.txt`.
+
+Instalação:
+
+```bash
+pip install -r requirements.txt
+```
+
+Exemplo com mix, instrumental e vocal target:
+
+```bash
+python scripts/prepare_dataset.py \
+  --mix song.mp3 \
+  --instrumental inst.mp3 \
+  --vocals vocals.mp3 \
+  --dataset-id gt_001_maniac_his_apocalypse_mix \
+  --output datasets/gt_001_maniac_his_apocalypse_mix
+```
+
+Por padrão o preparador:
+
+1. converte tudo para WAV float32 estéreo em 44.1 kHz;
+2. estima o offset de cada referência em relação ao mix;
+3. encontra a região temporal comum;
+4. corta segmentos de 8 segundos sem overlap;
+5. cria splits determinísticos de treino, validação e teste;
+6. gera `manifest.jsonl` e `metadata.json` com hashes, offsets e caminhos dos segmentos.
+
+O alinhamento é apenas uma medida temporal. O script **não** assume que `mix == instrumental + vocals` e não altera os targets para forçar essa igualdade.
