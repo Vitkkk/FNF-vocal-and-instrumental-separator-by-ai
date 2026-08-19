@@ -7,6 +7,8 @@ on:
       - android-apk
     paths:
       - "android/**"
+      - "model/**"
+      - "scripts/export_v31_onnx.py"
       - ".github/workflows/build-android.yml"
 
 permissions:
@@ -15,11 +17,16 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,6 +47,26 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Export V3.1 checkpoint to ONNX
+        if: ${{ hashFiles('model/best_model_v31.pt') != '' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu torch==2.7.1
+          pip install onnx==1.18.0 onnxscript==0.3.2
+          mkdir -p android/app/src/main/assets
+          python scripts/export_v31_onnx.py \
+            --checkpoint model/best_model_v31.pt \
+            --output android/app/src/main/assets/fnf_separator_v31.onnx
+          ls -lh android/app/src/main/assets/fnf_separator_v31.onnx
+
+      - name: Check embedded model status
+        run: |
+          if [ -f android/app/src/main/assets/fnf_separator_v31.onnx ]; then
+            echo "ONNX model will be bundled into the APK."
+          else
+            echo "No model/best_model_v31.pt found: building APK with manual ONNX import fallback."
+          fi
+
       - name: Build debug APK
         working-directory: android
         run: gradle :app:assembleDebug --stacktrace --no-daemon
@@ -47,12 +74,17 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FNF-Separator-v0.1-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FNF-Separator-v0.2-debug.apk
+          if [ -f android/app/src/main/assets/fnf_separator_v31.onnx ]; then
+            cp android/app/src/main/assets/fnf_separator_v31.onnx dist/fnf_separator_v31.onnx
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: FNF-Separator-Android-APK
-          path: dist/FNF-Separator-v0.1-debug.apk
+          path: |
+            dist/FNF-Separator-v0.2-debug.apk
+            dist/fnf_separator_v31.onnx
           if-no-files-found: error
           retention-days: 30
