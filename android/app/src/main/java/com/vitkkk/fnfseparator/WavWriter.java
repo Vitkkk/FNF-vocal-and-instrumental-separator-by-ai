@@ -23,6 +23,7 @@ final class WavWriter {
         Uri uri=cr.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,v);
         if (uri==null) throw new IOException("Não foi possível criar o arquivo de saída.");
         try (OutputStream raw=cr.openOutputStream(uri); BufferedOutputStream out=new BufferedOutputStream(raw)) {
+            if (raw==null) throw new IOException("Não foi possível abrir o arquivo de saída.");
             writeHeader(out,n,sampleRate);
             ByteBuffer buf=ByteBuffer.allocate(8192).order(ByteOrder.LITTLE_ENDIAN);
             for (int i=0;i<n;i++) {
@@ -31,7 +32,10 @@ final class WavWriter {
                 buf.putShort(toPcm(right[i]));
             }
             if (buf.position()>0) out.write(buf.array(),0,buf.position());
-        } catch (Exception e) {
+        } catch (IOException e) {
+            cr.delete(uri,null,null);
+            throw e;
+        } catch (RuntimeException e) {
             cr.delete(uri,null,null);
             throw e;
         }
