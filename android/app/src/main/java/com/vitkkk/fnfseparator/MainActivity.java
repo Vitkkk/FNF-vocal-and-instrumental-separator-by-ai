@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         root.addView(title,new LinearLayout.LayoutParams(-1,-2));
 
         TextView sub=new TextView(this);
-        sub.setText("V3.1 • processamento 100% local");
+        sub.setText("V3.1 • processamento 100% local • low-memory build");
         sub.setTextSize(15);
         sub.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2); sp.setMargins(0,dp(4),0,dp(28));
@@ -101,7 +101,6 @@ public class MainActivity extends Activity {
             byte[] buf=new byte[1<<16]; int n;
             while ((n=in.read(buf))>0) out.write(buf,0,n);
         } catch (Exception ignored) {
-            // The fallback importer remains available when an APK was built without an embedded model.
         }
     }
 
@@ -142,32 +141,46 @@ public class MainActivity extends Activity {
     private void startSeparation() {
         if (!modelFile.exists()) { Toast.makeText(this,"O modelo ONNX não está disponível.",Toast.LENGTH_LONG).show(); return; }
         if (audioUri==null) { Toast.makeText(this,"Selecione uma música.",Toast.LENGTH_SHORT).show(); return; }
-        run.setEnabled(false); chooseAudio.setEnabled(false); progress.setProgress(0); status.setText("Decodificando áudio…");
+
+        run.setEnabled(false);
+        chooseAudio.setEnabled(false);
+        progress.setProgress(0);
+        status.setText("Decodificando áudio…");
         Uri selected=audioUri;
+
         worker.submit(()->{
             try {
                 AudioDecoder.AudioData audio=AudioDecoder.decode(this,selected);
-                runOnUiThread(()->status.setText("Executando V3.1…"));
+                System.gc();
+                runOnUiThread(()->status.setText("Executando V3.1 em modo econômico…"));
+
                 SeparatorEngine engine=new SeparatorEngine();
                 SeparatorEngine.Result r=engine.separate(audio,modelFile.getAbsolutePath(),(pct,msg)->runOnUiThread(()->{
-                    progress.setProgress(pct); status.setText(msg);
+                    progress.setProgress(pct);
+                    status.setText(msg);
                 }));
+
                 runOnUiThread(()->status.setText("Salvando WAVs…"));
                 String base="FNF_Separated_"+System.currentTimeMillis();
+
                 WavWriter.write(this,base+"_Vocals.wav",r.vocalL,r.vocalR,44100);
-                WavWriter.write(this,base+"_Instrumental.wav",r.instL,r.instR,44100);
+                WavWriter.writeDifference(this,base+"_Instrumental.wav",
+                        audio.left,audio.right,r.vocalL,r.vocalR,44100);
+
                 runOnUiThread(()->{
                     progress.setProgress(100);
                     status.setText("Concluído! Arquivos salvos em Music/FNF Separator");
                     Toast.makeText(this,"Vocals e instrumental geradas!",Toast.LENGTH_LONG).show();
-                    run.setEnabled(true); chooseAudio.setEnabled(true);
+                    run.setEnabled(true);
+                    chooseAudio.setEnabled(true);
                 });
             } catch (Throwable e) {
                 runOnUiThread(()->{
                     progress.setProgress(0);
                     status.setText("Erro: "+e.getMessage());
                     Toast.makeText(this,"Falha: "+e.getMessage(),Toast.LENGTH_LONG).show();
-                    run.setEnabled(true); chooseAudio.setEnabled(true);
+                    run.setEnabled(true);
+                    chooseAudio.setEnabled(true);
                 });
             }
         });
@@ -180,6 +193,7 @@ public class MainActivity extends Activity {
     private int dp(int v) { return Math.round(v*getResources().getDisplayMetrics().density); }
 
     @Override protected void onDestroy() {
-        super.onDestroy(); worker.shutdownNow();
+        super.onDestroy();
+        worker.shutdownNow();
     }
 }
