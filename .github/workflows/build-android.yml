@@ -22,6 +22,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve V3.1 checkpoint
+        run: |
+          mkdir -p model
+          if [ -f model/best_model_v31.pt ]; then
+            echo "Checkpoint already exists in android-apk/model."
+          else
+            git fetch origin main
+            if git cat-file -e origin/main:melhor_modelo_v31.pt 2>/dev/null; then
+              git show origin/main:melhor_modelo_v31.pt > model/best_model_v31.pt
+              echo "Copied root checkpoint from main: melhor_modelo_v31.pt"
+            elif git cat-file -e origin/main:best_model_v31.pt 2>/dev/null; then
+              git show origin/main:best_model_v31.pt > model/best_model_v31.pt
+              echo "Copied root checkpoint from main: best_model_v31.pt"
+            else
+              echo "No V3.1 checkpoint found in android-apk/model or main root."
+            fi
+          fi
+          ls -lh model || true
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -64,7 +85,7 @@ jobs:
           if [ -f android/app/src/main/assets/fnf_separator_v31.onnx ]; then
             echo "ONNX model will be bundled into the APK."
           else
-            echo "No model/best_model_v31.pt found: building APK with manual ONNX import fallback."
+            echo "No checkpoint found: building APK with manual ONNX import fallback."
           fi
 
       - name: Build debug APK
