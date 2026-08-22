@@ -48,6 +48,14 @@ jobs:
             git show origin/main:best_model_v32_epoch11.pt > model/best_model_v32_epoch11.pt
             SOURCE="model/best_model_v32_epoch11.pt"
             MODEL_KIND="v32_epoch11"
+          elif git cat-file -e 'origin/main:época_11.pt' 2>/dev/null; then
+            git show 'origin/main:época_11.pt' > model/best_model_v32_epoch11.pt
+            SOURCE="model/best_model_v32_epoch11.pt"
+            MODEL_KIND="v32_epoch11"
+          elif git cat-file -e origin/main:epoca_11.pt 2>/dev/null; then
+            git show origin/main:epoca_11.pt > model/best_model_v32_epoch11.pt
+            SOURCE="model/best_model_v32_epoch11.pt"
+            MODEL_KIND="v32_epoch11"
           elif [ -f model/best_model_v31.pt ]; then
             SOURCE="model/best_model_v31.pt"
           elif git cat-file -e origin/main:melhor_modelo_v31.pt 2>/dev/null; then
