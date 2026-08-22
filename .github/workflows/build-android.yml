@@ -25,24 +25,49 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve V3.1 checkpoint
+      - name: Resolve preferred checkpoint
+        id: model
+        shell: bash
         run: |
+          set -e
           mkdir -p model
-          if [ -f model/best_model_v31.pt ]; then
-            echo "Checkpoint already exists in android-apk/model."
-          else
-            git fetch origin main
-            if git cat-file -e origin/main:melhor_modelo_v31.pt 2>/dev/null; then
-              git show origin/main:melhor_modelo_v31.pt > model/best_model_v31.pt
-              echo "Copied root checkpoint from main: melhor_modelo_v31.pt"
-            elif git cat-file -e origin/main:best_model_v31.pt 2>/dev/null; then
-              git show origin/main:best_model_v31.pt > model/best_model_v31.pt
-              echo "Copied root checkpoint from main: best_model_v31.pt"
-            else
-              echo "No V3.1 checkpoint found in android-apk/model or main root."
-            fi
+          git fetch origin main
+
+          MODEL_KIND="v31"
+          SOURCE=""
+
+          # Prefer the V3.2 Epoch 11 checkpoint whenever it exists.
+          if [ -f model/best_model_v32_epoch11.pt ]; then
+            SOURCE="model/best_model_v32_epoch11.pt"
+            MODEL_KIND="v32_epoch11"
+          elif git cat-file -e origin/main:melhor_modelo_v32_epoch11.pt 2>/dev/null; then
+            git show origin/main:melhor_modelo_v32_epoch11.pt > model/best_model_v32_epoch11.pt
+            SOURCE="model/best_model_v32_epoch11.pt"
+            MODEL_KIND="v32_epoch11"
+          elif git cat-file -e origin/main:best_model_v32_epoch11.pt 2>/dev/null; then
+            git show origin/main:best_model_v32_epoch11.pt > model/best_model_v32_epoch11.pt
+            SOURCE="model/best_model_v32_epoch11.pt"
+            MODEL_KIND="v32_epoch11"
+          elif [ -f model/best_model_v31.pt ]; then
+            SOURCE="model/best_model_v31.pt"
+          elif git cat-file -e origin/main:melhor_modelo_v31.pt 2>/dev/null; then
+            git show origin/main:melhor_modelo_v31.pt > model/best_model_v31.pt
+            SOURCE="model/best_model_v31.pt"
+          elif git cat-file -e origin/main:best_model_v31.pt 2>/dev/null; then
+            git show origin/main:best_model_v31.pt > model/best_model_v31.pt
+            SOURCE="model/best_model_v31.pt"
           fi
-          ls -lh model || true
+
+          if [ -z "$SOURCE" ]; then
+            echo "No compatible checkpoint found."
+            echo "checkpoint=" >> "$GITHUB_OUTPUT"
+            echo "kind=none" >> "$GITHUB_OUTPUT"
+          else
+            echo "Using checkpoint: $SOURCE ($MODEL_KIND)"
+            ls -lh "$SOURCE"
+            echo "checkpoint=$SOURCE" >> "$GITHUB_OUTPUT"
+            echo "kind=$MODEL_KIND" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -68,22 +93,37 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Export V3.1 checkpoint to ONNX
-        if: ${{ hashFiles('model/best_model_v31.pt') != '' }}
+      - name: Export checkpoint to ONNX
+        if: ${{ steps.model.outputs.kind != 'none' }}
+        shell: bash
         run: |
+          set -e
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu torch==2.7.1
           pip install onnx==1.18.0 onnxscript==0.3.2
-          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/assets dist
+
+          if [ "${{ steps.model.outputs.kind }}" = "v32_epoch11" ]; then
+            PUBLIC_ONNX="fnf_separator_v32_epoch11.onnx"
+          else
+            PUBLIC_ONNX="fnf_separator_v31.onnx"
+          fi
+
           python scripts/export_v31_onnx.py \
-            --checkpoint model/best_model_v31.pt \
-            --output android/app/src/main/assets/fnf_separator_v31.onnx
-          ls -lh android/app/src/main/assets/fnf_separator_v31.onnx
+            --checkpoint "${{ steps.model.outputs.checkpoint }}" \
+            --output "dist/$PUBLIC_ONNX"
+
+          # The current Android app loads this asset name. Copy whichever
+          # checkpoint won the selection into that stable embedded filename.
+          cp "dist/$PUBLIC_ONNX" android/app/src/main/assets/fnf_separator_v31.onnx
+          echo "Embedded model: $PUBLIC_ONNX"
+          ls -lh "dist/$PUBLIC_ONNX" android/app/src/main/assets/fnf_separator_v31.onnx
 
       - name: Check embedded model status
         run: |
           if [ -f android/app/src/main/assets/fnf_separator_v31.onnx ]; then
             echo "ONNX model will be bundled into the APK."
+            echo "Selected model: ${{ steps.model.outputs.kind }}"
           else
             echo "No checkpoint found: building APK with manual ONNX import fallback."
           fi
@@ -95,17 +135,14 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FNF-Separator-v0.2-debug.apk
-          if [ -f android/app/src/main/assets/fnf_separator_v31.onnx ]; then
-            cp android/app/src/main/assets/fnf_separator_v31.onnx dist/fnf_separator_v31.onnx
-          fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FNF-Separator-v0.3-debug.apk
 
-      - name: Upload APK
+      - name: Upload APK and ONNX
         uses: actions/upload-artifact@v4
         with:
           name: FNF-Separator-Android-APK
           path: |
-            dist/FNF-Separator-v0.2-debug.apk
-            dist/fnf_separator_v31.onnx
+            dist/FNF-Separator-v0.3-debug.apk
+            dist/*.onnx
           if-no-files-found: error
           retention-days: 30
